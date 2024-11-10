@@ -2,6 +2,35 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import ical from 'node-ical';
 
+// iCalのイベント型定義
+interface ICalEvent {
+  type: string;
+  uid: string;
+  summary: string;
+  start: Date;
+  end: Date;
+  location?: string;
+  description?: string;
+}
+
+type CalendarEvent = {
+  id: string;
+  subject: string;
+  start: {
+    dateTime: string;
+    timeZone: string;
+  };
+  end: {
+    dateTime: string;
+    timeZone: string;
+  };
+  location?: {
+    displayName: string;
+  };
+  description?: string;
+  source: 'calendar1' | 'calendar2';
+};
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -22,9 +51,9 @@ export default async function handler(
     ]);
 
     // イベントを整形して、どのカレンダーかを示すsourceプロパティを追加
-    const formatEvents = (events: any, source: string) => {
+    const formatEvents = (events: Record<string, any>, source: 'calendar1' | 'calendar2') => {
       return Object.values(events)
-        .filter(event => event.type === 'VEVENT')
+        .filter((event): event is ICalEvent => event.type === 'VEVENT')
         .map(event => ({
           id: event.uid,
           subject: event.summary,
@@ -40,7 +69,7 @@ export default async function handler(
             displayName: event.location
           } : undefined,
           description: event.description,
-          source: source // カレンダーの識別子を追加
+          source: source
         }));
     };
 
