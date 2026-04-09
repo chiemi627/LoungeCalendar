@@ -67,6 +67,7 @@ export const TimetableCalendar = () => {
 
   const tableRef = useRef<HTMLDivElement>(null);
   const todayRowRef = useRef<HTMLTableRowElement>(null);
+  const todayCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchEvents();
@@ -86,6 +87,20 @@ export const TimetableCalendar = () => {
       }
     }
   }, [loading, currentDate]);
+
+  useEffect(() => {
+    if (viewMode === "list" && todayCardRef.current) {
+      const today = new Date();
+      if (
+        today.getMonth() === currentDate.getMonth() &&
+        today.getFullYear() === currentDate.getFullYear()
+      ) {
+        setTimeout(() => {
+          todayCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 50);
+      }
+    }
+  }, [viewMode, loading, currentDate]);
 
   const fetchEvents = async () => {
     try {
@@ -267,6 +282,7 @@ export const TimetableCalendar = () => {
               return (
                 <div
                   key={day.getTime()}
+                  ref={today ? todayCardRef : null}
                   className={`rounded-lg border overflow-hidden ${
                     today ? "border-yellow-400" : "border-gray-200"
                   }`}
