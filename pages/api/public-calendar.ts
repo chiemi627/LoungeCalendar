@@ -1,8 +1,8 @@
 // pages/api/public-calendar.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import ical from 'node-ical';
+import { getCachedData, setCachedData } from '../../lib/calendarCache';
 
-// iCalのイベント型定義
 interface ICalEvent {
   type: string;
   uid: string;
@@ -36,21 +36,27 @@ export default async function handler(
   res: NextApiResponse
 ) {
   try {
-    // 2つのカレンダーのURL
+    const cached = getCachedData();
+    if (cached) {
+      return res.status(200).json({
+        value: cached.events,
+        cachedAt: cached.cachedAt,
+        fromCache: true,
+      });
+    }
+
     const calendar1Url = process.env.PUBLIC_CALENDAR_URL_1;
     const calendar2Url = process.env.PUBLIC_CALENDAR_URL_2;
 
     if (!calendar1Url || !calendar2Url) {
-      return res.status(400).json({ error: "カレンダーURLが設定されていません" });
+      return res.status(400).json({ error: 'カレンダーURLが設定されていません' });
     }
 
-    // 両方のカレンダーを並行して取得
     const [events1, events2] = await Promise.all([
       ical.async.fromURL(calendar1Url),
-      ical.async.fromURL(calendar2Url)
+      ical.async.fromURL(calendar2Url),
     ]);
 
-    // イベントを整形して、どのカレンダーかを示すsourceプロパティを追加
     const formatEvents = (events: Record<string, any>, source: 'calendar1' | 'calendar2') => {
       return Object.values(events)
         .filter((event): event is ICalEvent => event.type === 'VEVENT')
@@ -59,32 +65,35 @@ export default async function handler(
           subject: event.summary,
           start: {
             dateTime: event.start.toISOString(),
-            timeZone: 'Asia/Tokyo'
+            timeZone: 'Asia/Tokyo',
           },
           end: {
             dateTime: event.end.toISOString(),
-            timeZone: 'Asia/Tokyo'
+            timeZone: 'Asia/Tokyo',
           },
-          location: event.location ? {
-            displayName: event.location
-          } : undefined,
+          location: event.location ? { displayName: event.location } : undefined,
           description: event.description,
-          source: source
+          source: source,
         }));
     };
 
     const combinedEvents = [
       ...formatEvents(events1, 'calendar1'),
-      ...formatEvents(events2, 'calendar2')
+      ...formatEvents(events2, 'calendar2'),
     ];
 
-    res.status(200).json({ value: combinedEvents });
+    setCachedData(combinedEvents);
 
+    res.status(200).json({
+      value: combinedEvents,
+      cachedAt: Date.now(),
+      fromCache: false,
+    });
   } catch (error) {
     console.error('Calendar fetch error:', error);
-    res.status(500).json({ 
-      error: "カレンダーの取得に失敗しました",
-      details: error instanceof Error ? error.message : '未知のエラー'
+    res.status(500).json({
+      error: 'カレンダーの取得に失敗しました',
+      details: error instanceof Error ? error.message : '未知のエラー',
     });
   }
 }

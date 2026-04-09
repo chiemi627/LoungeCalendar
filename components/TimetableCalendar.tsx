@@ -59,8 +59,10 @@ const CALENDAR_STYLES = {
 export const TimetableCalendar = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const tableRef = useRef<HTMLDivElement>(null);
   const todayRowRef = useRef<HTMLTableRowElement>(null);
@@ -96,11 +98,33 @@ export const TimetableCalendar = () => {
         throw new Error(data.error || "カレンダーの取得に失敗しました");
       }
       setEvents(data.value || []);
+      if (data.cachedAt) {
+        setLastUpdated(new Date(data.cachedAt));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "未知のエラー");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetch("/api/refresh-calendar", { method: "POST" });
+      await fetchEvents();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "更新に失敗しました");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const formatLastUpdated = (date: Date) => {
+    return new Intl.DateTimeFormat("ja-JP", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
   };
 
   const getDaysInMonth = () => {
@@ -155,6 +179,19 @@ export const TimetableCalendar = () => {
           >
             ✏️ 予約する
           </a>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-md hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
+          >
+            <span className={refreshing ? "animate-spin inline-block" : ""}>🔄</span>
+            {refreshing ? "更新中..." : "カレンダーを更新"}
+          </button>
+          {lastUpdated && (
+            <span className="text-sm text-gray-400">
+              最終取得: {formatLastUpdated(lastUpdated)}
+            </span>
+          )}
           <div className="flex gap-4">
             <div className="flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-md">
               <span className="text-green-800">

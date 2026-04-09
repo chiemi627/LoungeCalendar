@@ -22,8 +22,10 @@ interface CalendarEvent {
 export const PublicCalendar = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [apiResponse, setApiResponse] = useState<any>(null); // APIレスポンス全体を保存
+  const [apiResponse, setApiResponse] = useState<any>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     fetchEvents();
@@ -33,19 +35,32 @@ export const PublicCalendar = () => {
     try {
       const response = await fetch('/api/public-calendar');
       const data = await response.json();
-      console.log('API Response:', data); // コンソールに出力
-      setApiResponse(data); // レスポンス全体を保存
+      setApiResponse(data);
 
       if (!response.ok) {
         throw new Error(data.error || 'カレンダーの取得に失敗しました');
       }
 
       setEvents(data.value || []);
+      if (data.cachedAt) {
+        setLastUpdated(new Date(data.cachedAt));
+      }
     } catch (err) {
-      console.error('Error:', err);
       setError(err instanceof Error ? err.message : '未知のエラー');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetch('/api/refresh-calendar', { method: 'POST' });
+      await fetchEvents();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '更新に失敗しました');
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -53,7 +68,7 @@ export const PublicCalendar = () => {
     return new Intl.DateTimeFormat('ja-JP', {
       month: 'long',
       day: 'numeric',
-      weekday: 'long'
+      weekday: 'long',
     }).format(new Date(dateString));
   };
 
@@ -61,11 +76,17 @@ export const PublicCalendar = () => {
     return new Intl.DateTimeFormat('ja-JP', {
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false
+      hour12: false,
     }).format(new Date(dateString));
   };
 
-  // 日付でイベントをグループ化
+  const formatLastUpdated = (date: Date) => {
+    return new Intl.DateTimeFormat('ja-JP', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+  };
+
   const groupedEvents = events.reduce((groups, event) => {
     const date = formatDate(event.start.dateTime);
     if (!groups[date]) {
@@ -91,13 +112,31 @@ export const PublicCalendar = () => {
       </div>
     );
   }
+
   return (
     <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-lg overflow-hidden">
       <div className="p-6 bg-gray-50 border-b">
-        <h2 className="text-xl font-semibold flex items-center gap-2">
-          <Calendar className="w-6 h-6" />
-          今週の予定
-        </h2>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Calendar className="w-6 h-6" />
+            今週の予定
+          </h2>
+          <div className="flex items-center gap-3">
+            {lastUpdated && (
+              <span className="text-sm text-gray-400">
+                最終取得: {formatLastUpdated(lastUpdated)}
+              </span>
+            )}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-100 transition-colors disabled:opacity-50"
+            >
+              <span className={refreshing ? "animate-spin inline-block" : ""}>🔄</span>
+              {refreshing ? "更新中..." : "カレンダーを更新"}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="p-6">
@@ -108,8 +147,8 @@ export const PublicCalendar = () => {
                 {date}
               </h3>
               {dayEvents.map((event) => (
-                <div 
-                  key={event.id} 
+                <div
+                  key={event.id}
                   className="bg-white rounded-lg p-4 border-l-4 border-blue-500 hover:shadow-md transition-shadow"
                 >
                   <div className="font-medium text-lg">{event.subject}</div>
