@@ -43,7 +43,6 @@ const CALENDAR_STYLES = {
     borderColor: "border-green-200",
     bgColor: "bg-green-50",
     textColor: "text-green-900",
-    hoverShadow: "hover:shadow-green-100",
     label: "5Fラウンジ",
   },
   calendar1: {
@@ -51,10 +50,11 @@ const CALENDAR_STYLES = {
     borderColor: "border-blue-200",
     bgColor: "bg-blue-50",
     textColor: "text-blue-900",
-    hoverShadow: "hover:shadow-blue-100",
     label: "6Fラウンジ",
   },
 };
+
+const DAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
 
 export const TimetableCalendar = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -63,6 +63,7 @@ export const TimetableCalendar = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [viewMode, setViewMode] = useState<"table" | "list">("table");
 
   const tableRef = useRef<HTMLDivElement>(null);
   const todayRowRef = useRef<HTMLTableRowElement>(null);
@@ -81,11 +82,7 @@ export const TimetableCalendar = () => {
         const tableTop = tableRef.current.getBoundingClientRect().top;
         const rowTop = todayRowRef.current.getBoundingClientRect().top;
         const scrollTop = rowTop - tableTop - 100;
-
-        tableRef.current.scrollTo({
-          top: scrollTop,
-          behavior: "smooth",
-        });
+        tableRef.current.scrollTo({ top: scrollTop, behavior: "smooth" });
       }
     }
   }, [loading, currentDate]);
@@ -98,9 +95,7 @@ export const TimetableCalendar = () => {
         throw new Error(data.error || "カレンダーの取得に失敗しました");
       }
       setEvents(data.value || []);
-      if (data.cachedAt) {
-        setLastUpdated(new Date(data.cachedAt));
-      }
+      if (data.cachedAt) setLastUpdated(new Date(data.cachedAt));
     } catch (err) {
       setError(err instanceof Error ? err.message : "未知のエラー");
     } finally {
@@ -120,135 +115,211 @@ export const TimetableCalendar = () => {
     }
   };
 
-  const formatLastUpdated = (date: Date) => {
-    return new Intl.DateTimeFormat("ja-JP", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(date);
-  };
+  const formatLastUpdated = (date: Date) =>
+    new Intl.DateTimeFormat("ja-JP", { hour: "2-digit", minute: "2-digit" }).format(date);
 
   const getDaysInMonth = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const lastDay = new Date(year, month + 1, 0);
     const days: Date[] = [];
-
     for (let d = 1; d <= lastDay.getDate(); d++) {
       days.push(new Date(year, month, d));
     }
     return days;
   };
 
-  const getEventsForTimeSlot = (
-    date: Date,
-    timeSlot: TimeSlot,
-  ): CalendarEvent[] => {
+  const getEventsForTimeSlot = (date: Date, timeSlot: TimeSlot): CalendarEvent[] => {
     return events.filter((event) => {
       const eventDate = new Date(event.start.dateTime);
-      const eventHour = eventDate.getHours();
-      const eventMinute = eventDate.getMinutes();
-
       return (
         eventDate.getDate() === date.getDate() &&
         eventDate.getMonth() === date.getMonth() &&
         eventDate.getFullYear() === date.getFullYear() &&
-        eventHour === timeSlot.startHour &&
-        eventMinute === timeSlot.startMinute
+        eventDate.getHours() === timeSlot.startHour &&
+        eventDate.getMinutes() === timeSlot.startMinute
       );
     });
   };
 
+  const getEventsForDay = (date: Date): { slot: TimeSlot; events: CalendarEvent[] }[] => {
+    return TIME_SLOTS.map((slot) => ({
+      slot,
+      events: getEventsForTimeSlot(date, slot),
+    })).filter((item) => item.events.length > 0);
+  };
+
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return (
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear()
+    );
+  };
+
   if (loading) return <div className="text-center py-8">読み込み中...</div>;
-  if (error)
-    return <div className="text-red-500 text-center py-8">エラー: {error}</div>;
+  if (error) return <div className="text-red-500 text-center py-8">エラー: {error}</div>;
 
   const days = getDaysInMonth();
 
-  return (
-    <div className="p-6 bg-white rounded-xl shadow-lg">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">
-          {currentDate.getFullYear()}年{currentDate.getMonth() + 1}月
-        </h2>
-        <div className="flex flex-wrap gap-4 items-center">
-          <a
-            href="https://forms.office.com/r/nfDyZ9s8Yc"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center px-6 py-2.5 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition-colors shadow-sm"
-          >
-            ✏️ 予約する
-          </a>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-md hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
-          >
-            <span className={refreshing ? "animate-spin inline-block" : ""}>🔄</span>
-            {refreshing ? "更新中..." : "カレンダーを更新"}
-          </button>
-          {lastUpdated && (
-            <span className="text-sm text-gray-400">
-              最終取得: {formatLastUpdated(lastUpdated)}
-            </span>
-          )}
-          <div className="flex gap-4">
-            <div className="flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-md">
-              <span className="text-green-800">
-                {CALENDAR_STYLES.calendar2.icon}
-              </span>
-              <span className="text-sm font-medium">
-                {CALENDAR_STYLES.calendar2.label}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-md">
-              <span className="text-blue-800">
-                {CALENDAR_STYLES.calendar1.icon}
-              </span>
-              <span className="text-sm font-medium">
-                {CALENDAR_STYLES.calendar1.label}
-              </span>
-            </div>
+  const Header = () => (
+    <div className="mb-6">
+      <h2 className="text-2xl font-bold text-gray-800 mb-4">
+        {currentDate.getFullYear()}年{currentDate.getMonth() + 1}月
+      </h2>
+      <div className="flex flex-wrap gap-3 items-center">
+        <a
+          href="https://forms.office.com/r/nfDyZ9s8Yc"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center px-6 py-2.5 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 transition-colors shadow-sm"
+        >
+          ✏️ 予約する
+        </a>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-md hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
+        >
+          <span className={refreshing ? "animate-spin inline-block" : ""}>🔄</span>
+          {refreshing ? "更新中..." : "カレンダーを更新"}
+        </button>
+        {lastUpdated && (
+          <span className="text-sm text-gray-400">最終取得: {formatLastUpdated(lastUpdated)}</span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+        <div className="flex gap-3">
+          <div className="flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-md">
+            <span className="text-green-800">{CALENDAR_STYLES.calendar2.icon}</span>
+            <span className="text-sm font-medium">{CALENDAR_STYLES.calendar2.label}</span>
+          </div>
+          <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-md">
+            <span className="text-blue-800">{CALENDAR_STYLES.calendar1.icon}</span>
+            <span className="text-sm font-medium">{CALENDAR_STYLES.calendar1.label}</span>
           </div>
         </div>
-      </div>
-
-      <div className="flex justify-end mb-6">
-        <div className="space-x-2">
+        <div className="flex rounded-md border border-gray-300 overflow-hidden">
           <button
-            onClick={() =>
-              setCurrentDate(
-                new Date(currentDate.setMonth(currentDate.getMonth() - 1)),
-              )
-            }
-            className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            onClick={() => setViewMode("table")}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              viewMode === "table"
+                ? "bg-gray-700 text-white"
+                : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
           >
-            前月
+            📊 表形式
           </button>
           <button
-            onClick={() => setCurrentDate(new Date())}
-            className="px-4 py-2 text-sm font-medium text-white bg-gray-600 rounded-md hover:bg-gray-700 transition-colors"
+            onClick={() => setViewMode("list")}
+            className={`px-4 py-2 text-sm font-medium border-l border-gray-300 transition-colors ${
+              viewMode === "list"
+                ? "bg-gray-700 text-white"
+                : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
           >
-            今月
-          </button>
-          <button
-            onClick={() =>
-              setCurrentDate(
-                new Date(currentDate.setMonth(currentDate.getMonth() + 1)),
-              )
-            }
-            className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            翌月
+            📋 リスト形式
           </button>
         </div>
       </div>
+    </div>
+  );
 
+  const MonthNav = () => (
+    <div className="flex justify-end mb-4 space-x-2">
+      <button
+        onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}
+        className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+      >
+        前月
+      </button>
+      <button
+        onClick={() => setCurrentDate(new Date())}
+        className="px-4 py-2 text-sm font-medium text-white bg-gray-600 rounded-md hover:bg-gray-700 transition-colors"
+      >
+        今月
+      </button>
+      <button
+        onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}
+        className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+      >
+        翌月
+      </button>
+    </div>
+  );
+
+  if (viewMode === "list") {
+    const daysWithEvents = days.filter((day) => getEventsForDay(day).length > 0);
+    return (
+      <div className="p-4 bg-white rounded-xl shadow-lg">
+        <Header />
+        <MonthNav />
+        <div className="space-y-3">
+          {daysWithEvents.length === 0 ? (
+            <div className="text-center text-gray-400 py-10">この月の予定はありません</div>
+          ) : (
+            daysWithEvents.map((day) => {
+              const dayEvents = getEventsForDay(day);
+              const today = isToday(day);
+              const isSunday = day.getDay() === 0;
+              const isSaturday = day.getDay() === 6;
+              return (
+                <div
+                  key={day.getTime()}
+                  className={`rounded-lg border overflow-hidden ${
+                    today ? "border-yellow-400" : "border-gray-200"
+                  }`}
+                >
+                  <div
+                    className={`px-4 py-2 font-semibold flex items-center gap-2 ${
+                      today
+                        ? "bg-yellow-50 text-yellow-800"
+                        : isSunday
+                        ? "bg-red-50 text-red-700"
+                        : isSaturday
+                        ? "bg-blue-50 text-blue-700"
+                        : "bg-gray-50 text-gray-700"
+                    }`}
+                  >
+                    <span>{day.getDate()}日（{DAY_NAMES[day.getDay()]}）</span>
+                    {today && <span className="text-xs text-orange-600 font-bold">Today</span>}
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {dayEvents.map(({ slot, events: slotEvents }) =>
+                      slotEvents.map((event) => {
+                        const style = CALENDAR_STYLES[event.source];
+                        return (
+                          <div
+                            key={event.id}
+                            className={`flex items-center gap-3 px-4 py-3 ${style.bgColor}`}
+                          >
+                            <span className="text-xs font-bold text-gray-500 w-12 shrink-0">
+                              {slot.name}
+                            </span>
+                            <span className={`text-sm font-medium ${style.textColor}`}>
+                              {style.icon} {event.subject}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 bg-white rounded-xl shadow-lg">
+      <Header />
+      <MonthNav />
       <div className="border border-gray-200 rounded-lg">
-        <div
-          ref={tableRef}
-          className="max-h-[600px] overflow-auto scroll-smooth"
-        >
+        <div ref={tableRef} className="max-h-[600px] overflow-auto scroll-smooth">
           <table className="w-full border-collapse relative">
             <thead className="sticky top-0 z-20">
               <tr>
@@ -267,54 +338,32 @@ export const TimetableCalendar = () => {
             </thead>
             <tbody>
               {days.map((day, rowIndex) => {
-                const isToday =
-                  day.getDate() === new Date().getDate() &&
-                  day.getMonth() === new Date().getMonth() &&
-                  day.getFullYear() === new Date().getFullYear();
+                const today = isToday(day);
                 return (
                   <tr
                     key={day.getTime()}
-                    ref={isToday ? todayRowRef : null}
-                    className={`
-                      ${rowIndex % 2 === 0 ? "bg-white" : "bg-gray-50"}
-                      ${isToday ? "relative" : ""}
-                    `}
+                    ref={today ? todayRowRef : null}
+                    className={`${rowIndex % 2 === 0 ? "bg-white" : "bg-gray-50"} ${today ? "relative" : ""}`}
                   >
                     <td
-                      className={`
-                      sticky left-0 z-10 border-b border-r border-gray-200 p-4 font-medium
-                      ${
+                      className={`sticky left-0 z-10 border-b border-r border-gray-200 p-4 font-medium ${
                         day.getDay() === 0
                           ? "bg-red-50 text-red-800"
                           : day.getDay() === 6
-                            ? "bg-blue-50 text-blue-800"
-                            : rowIndex % 2 === 0
-                              ? "bg-white"
-                              : "bg-gray-50"
-                      }
-                      ${isToday ? "bg-yellow-50 font-bold" : ""}
-                    `}
+                          ? "bg-blue-50 text-blue-800"
+                          : rowIndex % 2 === 0
+                          ? "bg-white"
+                          : "bg-gray-50"
+                      } ${today ? "bg-yellow-50 font-bold" : ""}`}
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-lg">
                           {day.getDate()}
-                          {isToday && (
-                            <span className="ml-2 text-sm text-orange-600">
-                              Today
-                            </span>
-                          )}
+                          {today && <span className="ml-2 text-sm text-orange-600">Today</span>}
                         </span>
-                        <span className="text-sm text-gray-600">
-                          (
-                          {
-                            ["日", "月", "火", "水", "木", "金", "土"][
-                              day.getDay()
-                            ]
-                          }
-                          )
-                        </span>
+                        <span className="text-sm text-gray-600">({DAY_NAMES[day.getDay()]})</span>
                       </div>
-                      {isToday && (
+                      {today && (
                         <div className="absolute left-0 w-full h-full bg-yellow-100 opacity-10 pointer-events-none" />
                       )}
                     </td>
@@ -323,8 +372,7 @@ export const TimetableCalendar = () => {
                       return (
                         <td
                           key={`${day.getTime()}-${slot.name}`}
-                          className={`border-b border-r border-gray-200 p-3 align-top last:border-r-0
-                              ${isToday ? "bg-yellow-50/20" : ""}`}
+                          className={`border-b border-r border-gray-200 p-3 align-top last:border-r-0 ${today ? "bg-yellow-50/20" : ""}`}
                         >
                           <div className="min-h-[80px]">
                             {slotEvents.map((event) => {
@@ -332,13 +380,9 @@ export const TimetableCalendar = () => {
                               return (
                                 <div
                                   key={event.id}
-                                  className={`mb-2 last:mb-0 rounded-lg p-2.5 
-                                    ${style.bgColor} ${style.borderColor} shadow-sm hover:shadow-md 
-                                    transition-all duration-200`}
+                                  className={`mb-2 last:mb-0 rounded-lg p-2.5 ${style.bgColor} ${style.borderColor} shadow-sm hover:shadow-md transition-all duration-200`}
                                 >
-                                  <div
-                                    className={`font-medium flex items-center gap-1.5 mb-1 ${style.textColor}`}
-                                  >
+                                  <div className={`font-medium flex items-center gap-1.5 mb-1 ${style.textColor}`}>
                                     <span>{style.icon}</span>
                                     <span>{event.subject}</span>
                                   </div>
